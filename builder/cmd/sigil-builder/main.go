@@ -4,10 +4,12 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/sigil-auth/sigil/builder/internal/compiler"
 	"github.com/sigil-auth/sigil/builder/internal/crypto"
+	"github.com/sigil-auth/sigil/builder/internal/server"
 )
 
 func main() {
@@ -82,6 +84,24 @@ func cmdBuild() {
 }
 
 func cmdServe() {
-	fmt.Fprintln(os.Stderr, "serve mode not yet implemented")
-	os.Exit(1)
+	port := "8080"
+	args := os.Args[2:]
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--port" {
+			i++
+			if i < len(args) {
+				port = args[i]
+			}
+		}
+	}
+
+	srv := server.New(server.Config{
+		UseGarble: true,
+		UseUPX:    true,
+	})
+	fmt.Fprintf(os.Stderr, "sigil-builder serving on :%s\n", port)
+	if err := http.ListenAndServe(":"+port, srv); err != nil {
+		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+		os.Exit(1)
+	}
 }
