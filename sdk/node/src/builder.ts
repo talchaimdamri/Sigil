@@ -17,7 +17,10 @@ export interface Builder {
   build(privateKeySeedB64: string, platform: string): Promise<BuildResult>;
 }
 
-export function createBuilder(mode: string): Builder {
+export function createBuilder(mode: string, options?: { garble?: boolean; upx?: boolean }): Builder {
+  const useGarble = options?.garble ?? true;
+  const useUPX = options?.upx ?? true;
+
   if (mode === 'local') {
     return {
       type: 'local',
@@ -25,13 +28,17 @@ export function createBuilder(mode: string): Builder {
         const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sigil-'));
         const outPath = path.join(tmpDir, 'identity');
 
+        const args = [
+          'build',
+          '--private-key', privateKeySeedB64,
+          '--platform', platform,
+          '--output', outPath,
+        ];
+        if (!useGarble) args.push('--no-garble');
+        if (!useUPX) args.push('--no-upx');
+
         try {
-          await execFileAsync('sigil-builder', [
-            'build',
-            '--private-key', privateKeySeedB64,
-            '--platform', platform,
-            '--output', outPath,
-          ], { timeout: 120000 });
+          await execFileAsync('sigil-builder', args, { timeout: 120000 });
 
           const binary = await fs.readFile(outPath);
           const sha256 = crypto.createHash('sha256').update(binary).digest('hex');

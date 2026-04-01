@@ -31,6 +31,8 @@ func main() {
 
 func cmdBuild() {
 	var privKeyB64, platform, output string
+	useGarble := true
+	useUPX := true
 	args := os.Args[2:]
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -49,11 +51,15 @@ func cmdBuild() {
 			if i < len(args) {
 				output = args[i]
 			}
+		case "--no-garble":
+			useGarble = false
+		case "--no-upx":
+			useUPX = false
 		}
 	}
 
 	if privKeyB64 == "" || platform == "" || output == "" {
-		fmt.Fprintln(os.Stderr, "usage: sigil-builder build --private-key <base64> --platform <platform> --output <path>")
+		fmt.Fprintln(os.Stderr, "usage: sigil-builder build --private-key <base64> --platform <platform> --output <path> [--no-garble] [--no-upx]")
 		os.Exit(1)
 	}
 
@@ -71,8 +77,8 @@ func cmdBuild() {
 		PublicKey:      pub,
 		Platform:       platform,
 		OutputPath:     output,
-		UseGarble:      true,
-		UseUPX:         true,
+		UseGarble:      useGarble,
+		UseUPX:         useUPX,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "build failed: %v\n", err)

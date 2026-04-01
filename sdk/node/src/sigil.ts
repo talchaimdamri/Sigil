@@ -29,7 +29,7 @@ export class Sigil {
       enrollmentTTL: 1800,
       ...config,
     };
-    this.builder = createBuilder(config.builder);
+    this.builder = createBuilder(config.builder, { garble: config.garble, upx: config.upx });
   }
 
   async createAgent(params: { name: string; userId: string }): Promise<{

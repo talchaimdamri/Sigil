@@ -7,6 +7,8 @@ export interface SigilConfig {
   enrollmentTTL?: number;
   storage: StorageAdapter;
   maxKeyAge?: string | null;
+  garble?: boolean;
+  upx?: boolean;
 }
 
 export interface Agent {
