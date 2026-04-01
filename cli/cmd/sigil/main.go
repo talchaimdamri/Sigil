@@ -5,6 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/sigil-auth/sigil/cli/internal/auth"
+	"github.com/sigil-auth/sigil/cli/internal/enroll"
+	"github.com/sigil-auth/sigil/cli/internal/initcmd"
 )
 
 const version = "0.1.0"
@@ -75,16 +79,56 @@ func delegateToIdentity(command string, args []string) {
 }
 
 func cmdEnroll() {
-	fmt.Fprintln(os.Stderr, "enroll not yet implemented")
-	os.Exit(1)
+	var token, server string
+	args := os.Args[2:]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--token":
+			i++
+			if i < len(args) {
+				token = args[i]
+			}
+		case "--server":
+			i++
+			if i < len(args) {
+				server = args[i]
+			}
+		}
+	}
+
+	if token == "" || server == "" {
+		fmt.Fprintln(os.Stderr, "usage: sigil enroll --token <token> --server <url>")
+		os.Exit(1)
+	}
+
+	if err := enroll.Run(token, server); err != nil {
+		fmt.Fprintf(os.Stderr, "enrollment failed: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func cmdAuth() {
-	fmt.Fprintln(os.Stderr, "auth not yet implemented")
-	os.Exit(1)
+	var server string
+	args := os.Args[2:]
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--server":
+			i++
+			if i < len(args) {
+				server = args[i]
+			}
+		}
+	}
+
+	if err := auth.Run(server); err != nil {
+		fmt.Fprintf(os.Stderr, "auth failed: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func cmdInit() {
-	fmt.Fprintln(os.Stderr, "init not yet implemented")
-	os.Exit(1)
+	if err := initcmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "init failed: %v\n", err)
+		os.Exit(1)
+	}
 }
