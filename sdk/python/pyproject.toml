@@ -19,5 +19,8 @@ sqlite = ["aiosqlite>=0.19"]
 postgres = ["asyncpg>=0.28"]
 dev = ["pytest>=7.0", "pytest-asyncio>=0.21", "aiosqlite>=0.19"]
 
+[tool.hatch.build.targets.wheel]
+packages = ["sigil"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
