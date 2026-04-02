@@ -43,6 +43,160 @@ Needs hardware        Software only          Software only
 Key unextractable     Key hard to extract    Key trivially exposed
 ```
 
+## Quick Start
+
+### Prerequisites
+
+- **Go 1.24+** (for building the builder and CLI)
+- **Node.js 18+** (for the Node SDK)
+- **Python 3.10+** (for the Python SDK)
+- **Optional:** [garble](https://github.com/burrowers/garble) for binary obfuscation (`go install mvdan.cc/garble@latest`)
+- **Optional:** [UPX](https://upx.github.io/) for binary compression (`brew install upx`) — skipped on macOS 13+
+
+### 1. Build the binaries
+
+```bash
+# Build the builder (compiles identity binaries)
+cd builder && go build -o ../bin/sigil-builder ./cmd/sigil-builder/
+
+# Build the CLI (for agents)
+cd ../cli && go build -o ../bin/sigil ./cmd/sigil/
+
+# Add to PATH
+export PATH="$(pwd)/../bin:$PATH"
+```
+
+### 2. Set up a server (Node.js example)
+
+```bash
+cd sdk/node && npm install
+```
+
+```javascript
+import express from 'express';
+import { Sigil, createRouteHandlers, createMiddleware, SQLiteStorageAdapter } from '@sigil/server';
+
+const app = express();
+app.use(express.json());
+
+const sigil = new Sigil({
+  builder: 'local',                    // or 'http://localhost:8080' for Docker builder
+  platforms: ['linux-amd64', 'darwin-arm64'],
+  jwtSecret: process.env.SIGIL_JWT_SECRET,
+  storage: new SQLiteStorageAdapter('./sigil.db'),
+  garble: true,                        // set false if garble not installed
+});
+
+const handlers = createRouteHandlers(sigil);
+app.post('/sigil/agents',              handlers.createAgent);
+app.post('/sigil/enroll',              handlers.enroll);
+app.post('/sigil/auth/challenge',      handlers.challenge);
+app.post('/sigil/auth/verify',         handlers.verify);
+app.post('/sigil/agents/:id/rotate',   handlers.rotate);
+app.delete('/sigil/agents/:id/key',    handlers.revoke);
+app.post('/sigil/agents/:id/re-enroll', handlers.reEnroll);
+
+// Protected routes
+app.get('/api/whoami', createMiddleware(sigil), (req, res) => {
+  res.json({ agent: req.agent });
+});
+
+app.listen(3456);
+```
+
+### 3. Create an agent and enroll
+
+```bash
+# Server-side: create an agent (returns enrollment token)
+curl -X POST http://localhost:3456/sigil/agents \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-agent", "user_id": "user-123"}'
+# → {"agent_id":"...","enrollment_token":"...","enrollment_expires_at":"..."}
+
+# Agent-side: enroll (downloads identity binary)
+sigil enroll --token <enrollment_token> --server http://localhost:3456
+
+# Agent-side: authenticate (get a JWT)
+sigil auth --server http://localhost:3456
+# → prints JWT to stdout
+
+# Agent-side: use the JWT
+curl http://localhost:3456/api/whoami -H "Authorization: Bearer <jwt>"
+```
+
+### 4. Python server (alternative)
+
+```bash
+cd sdk/python && pip install -e ".[sqlite]"
+```
+
+```python
+from sigil import Sigil, SigilConfig
+from sigil.storage import SQLiteStorage
+
+storage = await SQLiteStorage.create(":memory:")
+sigil = Sigil(SigilConfig(
+    builder="local",
+    platforms=["linux-amd64", "darwin-arm64"],
+    jwt_secret="your-secret-here",
+    storage=storage,
+))
+```
+
+## Running the E2E Test
+
+The E2E test validates the full flow: create agent, enroll, sign, authenticate, call a protected endpoint.
+
+```bash
+# Prerequisites: Go, Node.js, jq
+# Build binaries first (see Quick Start step 1)
+
+# Run the test
+bash test/e2e/run.sh
+```
+
+Expected output:
+```
+=== Step 1: Start test server ===
+=== Step 2: Create agent ===
+=== Step 3: Enroll agent ===
+=== Step 4: Verify identity binary ===
+=== Step 5: Authenticate ===
+=== Step 6: Call protected endpoint ===
+=========================================
+  ALL E2E TESTS PASSED!
+=========================================
+```
+
+## Running Unit Tests
+
+```bash
+# Go (builder + compiler)
+cd builder && go test ./... -v
+
+# Node SDK (49 tests)
+cd sdk/node && npm test
+
+# Python SDK (33 tests)
+cd sdk/python && pip install -e ".[dev]" && pytest tests/ -v
+```
+
+## Project Structure
+
+```
+sigil/
+├── builder/          # Go — compiles identity binaries
+│   ├── cmd/          #   CLI + HTTP server entry points
+│   ├── internal/     #   compiler, crypto, server
+│   └── template/     #   Go source template for identity binaries
+├── sdk/
+│   ├── node/         # TypeScript — @sigil/server npm package
+│   └── python/       # Python — sigil-server PyPI package
+├── cli/              # Go — sigil CLI for agents + developers
+├── test/e2e/         # End-to-end test
+└── docs/plans/       # Design and implementation docs
+```
+
 ## Compatibility
 
 The challenge-response protocol is compatible with existing agent identity standards ([OpenAgents](https://github.com/OpenAgentsInc), [did:wba](https://github.com/anthropics/did-wba)). Sigil's contribution is the device-binding layer — the obfuscated binary that makes self-enrollment secure.
