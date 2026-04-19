@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.git
+**/.DS_Store
+**/.env
+**/.env.*
+**/*.log
+web/data
+test/e2e/.sigil-test
+bin
+docs
