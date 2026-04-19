@@ -43,6 +43,16 @@ Needs hardware        Software only          Software only
 Key unextractable     Key hard to extract    Key trivially exposed
 ```
 
+## Live Test Server
+
+A public instance of the minimal web layer (see [`web/`](./web)) is running on Railway:
+
+**https://sigil-test-production.up.railway.app**
+
+Sign in with any name, create an agent, and follow the one-block copy-paste on the agent detail page to enroll an agent machine and verify its codeword. No password, no email.
+
+> **Test server, not production.** Login is name-only — anyone who knows your name can see and create agents under it. Use it for end-to-end validation; don't attach real API credentials to agents created here.
+
 ## Quick Start
 
 ### Prerequisites
