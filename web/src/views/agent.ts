@@ -13,17 +13,33 @@ interface AgentDetailProps {
 
 export function agentDetailPage(props: AgentDetailProps): Html {
   const { user, agent, codeword, lastSeenAt, enrollmentToken, publicUrl } = props;
+  const connected = !!lastSeenAt && Date.now() - lastSeenAt < 10_000;
 
-  const enrollCmd = enrollmentToken
-    ? `sigil enroll --server ${publicUrl} --token ${enrollmentToken}`
+  // Single self-contained block that an operator can paste into any Unix
+  // shell on the agent machine. Detects platform, downloads the matching
+  // sigil CLI, enrolls, authenticates, and prints the /api/whoami JSON.
+  const oneShotBlock = enrollmentToken
+    ? [
+        `# 1. Detect platform and download the sigil CLI`,
+        `OS=$(uname | tr '[:upper:]' '[:lower:]')`,
+        `ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')`,
+        `curl -fsSL -o /tmp/sigil "${publicUrl}/bin/sigil-$OS-$ARCH" && chmod +x /tmp/sigil`,
+        ``,
+        `# 2. Enroll this machine (one-shot token, 30-min TTL)`,
+        `/tmp/sigil enroll --server ${publicUrl} --token ${enrollmentToken}`,
+        ``,
+        `# 3. Authenticate and fetch /api/whoami — codeword should be "${codeword}"`,
+        `JWT=$(/tmp/sigil auth --server ${publicUrl})`,
+        `curl -s -H "Authorization: Bearer $JWT" ${publicUrl}/api/whoami`,
+      ].join('\n')
     : null;
 
-  const verifyCmd = [
-    `JWT=$(sigil auth --server ${publicUrl})`,
+  // For agents already enrolled (e.g. after first run, token burned).
+  const verifyOnlyBlock = [
+    `# This machine has already enrolled. Just re-auth and check /api/whoami.`,
+    `JWT=$(/tmp/sigil auth --server ${publicUrl})`,
     `curl -s -H "Authorization: Bearer $JWT" ${publicUrl}/api/whoami`,
   ].join('\n');
-
-  const connected = !!lastSeenAt && Date.now() - lastSeenAt < 10_000;
 
   return layout(
     agent.name,
@@ -45,26 +61,54 @@ export function agentDetailPage(props: AgentDetailProps): Html {
       <h2>Codeword</h2>
       <div class="codeword">${codeword}</div>
       <p class="muted" style="margin-top: 0.5rem;">
-        This should appear in the agent's <code>whoami</code> response. If it doesn't match,
-        the agent is not talking to this server.
+        This word is unique to this agent. When the agent hits <code>/api/whoami</code>,
+        the server echoes this word back. If it doesn't match what you see here,
+        the agent isn't talking to this server.
       </p>
 
-      ${enrollCmd
-        ? html`
-            <h2>1. Enroll on the agent machine</h2>
-            <p class="muted">Run this where your agent lives. Token is one-shot and expires in 30 minutes.</p>
-            <pre><code>${enrollCmd}</code></pre>
-          `
-        : null}
-
-      <h2>${agent.status === 'active' ? '1' : '2'}. Verify connection</h2>
-      <p class="muted">Authenticates and hits <code>/api/whoami</code>.</p>
-      <pre><code>${verifyCmd}</code></pre>
-
+      <h2>How to connect this agent</h2>
       <div class="callout">
-        Expected response: <code>{ "username": "${user.name}", "agent_name": "${agent.name}", "codeword": "${codeword}", ... }</code>.
-        The codeword must match the one above.
+        <strong>What this does.</strong> Paste the block below into a shell on the machine
+        you want to turn into an agent (for example, the host of an AI coding agent).
+        It downloads a small binary called <code>sigil</code>, enrolls this machine
+        with the server (generating a cryptographic key pair inside a compiled binary,
+        never exposed as plaintext), and then asks the server
+        <em>"who am I?"</em>. The response should contain the codeword above.
       </div>
+
+      ${enrollmentToken
+        ? html`
+            <h3 style="font-size: 0.95rem; margin-top: 1.25rem; color: #9aa4b2;">One block, pastes as-is:</h3>
+            <pre><code>${oneShotBlock}</code></pre>
+            <p class="muted" style="font-size: 0.8rem;">
+              Runs on macOS or Linux (amd64 / arm64). The <code>--token</code> is one-shot
+              and burns the moment enrollment succeeds; you'll then see a JSON response
+              whose <code>codeword</code> field must equal <code>${codeword}</code>.
+            </p>
+          `
+        : html`
+            <h3 style="font-size: 0.95rem; margin-top: 1.25rem; color: #9aa4b2;">Already enrolled — just verify:</h3>
+            <pre><code>${verifyOnlyBlock}</code></pre>
+            <p class="muted" style="font-size: 0.8rem;">
+              Enrollment tokens are one-shot and expire after 30 minutes. To re-issue,
+              revoke this agent below and create a new one.
+            </p>
+          `}
+
+      <h2>Expected response</h2>
+      <pre><code>{
+  "username":   "${user.name}",
+  "agent_name": "${agent.name}",
+  "codeword":   "${codeword}",
+  "server":     "${new URL(publicUrl).host}",
+  "fingerprint":"sha256:…",
+  "agent_id":   "${agent.id}"
+}</code></pre>
+      <p class="muted" style="margin-top: 0.35rem;">
+        If <code>codeword</code> matches the big yellow word above, the agent has
+        successfully proven (via Ed25519 signature on a server-issued challenge)
+        that it is talking to this server and this account.
+      </p>
 
       <h2 style="margin-top: 2rem;">Danger zone</h2>
       <form action="/agents/${agent.id}/delete" method="post"

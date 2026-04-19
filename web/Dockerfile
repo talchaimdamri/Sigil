@@ -5,13 +5,24 @@
 #   3. web-builder  — installs web/ deps (resolves file:../sdk/node) and compiles TS
 #   4. runtime      — Node 20 + Go toolchain (needed by sigil-builder at run time)
 
-# ─── Stage 1: Go ──────────────────────────────────────────────────────
+# ─── Stage 1: Go — sigil-builder + cross-compiled sigil CLI ──────────
 FROM golang:1.24-alpine AS go-builder
-WORKDIR /src/builder
-COPY builder/go.mod builder/go.sum* ./
-RUN go mod download
-COPY builder ./
-RUN go build -trimpath -ldflags="-s -w" -o /out/sigil-builder ./cmd/sigil-builder/
+WORKDIR /src
+COPY builder ./builder
+COPY cli ./cli
+
+# sigil-builder runs inside the container at request time
+RUN cd builder && go build -trimpath -ldflags="-s -w" -o /out/sigil-builder ./cmd/sigil-builder/
+
+# Cross-compile the sigil CLI for the platforms agents might run on.
+# These binaries are served at /bin/sigil-<platform> by the web server so
+# an agent can fetch the right one with a single curl command.
+RUN cd cli && \
+    for target in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64; do \
+      GOOS="${target%-*}" GOARCH="${target#*-}" \
+      go build -trimpath -ldflags="-s -w" \
+        -o "/out/public/bin/sigil-${target}" ./cmd/sigil/; \
+    done
 
 # ─── Stage 2: SDK (@sigil/server) ─────────────────────────────────────
 FROM node:20-alpine AS sdk-builder
@@ -42,6 +53,7 @@ FROM node:20-alpine AS runtime
 RUN apk add --no-cache go git ca-certificates wget
 COPY --from=go-builder /out/sigil-builder /usr/local/bin/sigil-builder
 COPY --from=go-builder /src/builder/template /template
+COPY --from=go-builder /out/public /app/public
 ENV SIGIL_TEMPLATE_DIR=/template \
     NODE_ENV=production \
     PORT=8080 \
